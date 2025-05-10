@@ -1,65 +1,75 @@
-import wikipediaapi
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+import time
 
-# Инициализируем объект Wikipedia API
-wiki_wiki = wikipediaapi.Wikipedia('ru')
+def setup_driver():
+    options = webdriver.ChromeOptions()
+    options.add_argument('--headless')  # Запускаем браузер в фоновом режиме (без GUI)
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    return driver
 
-def get_article(query):
-    """Получаем статью по запросу."""
-    page = wiki_wiki.page(query)
-    if not page.exists():
-        print(f"Статья с названием '{query}' не найдена.")
+def search_wikipedia(driver, query):
+    driver.get(f"https://ru.wikipedia.org/wiki/{query}")
+    time.sleep(2)  # Ждем загрузки страницы
+
+    try:
+        title = driver.find_element(By.ID, "firstHeading").text
+        print(f"Заголовок: {title}")
+    except Exception as e:
+        print("Не удалось найти статью.")
         return None
-    return page
 
-def list_paragraphs(page):
-    """Выводим параграфы статьи."""
-    print(f"\nСодержание статьи '{page.title}':")
-    for section in page.sections:
-        print(f"\n{section.title}:\n{section.text[:200]}...")  # Показываем первые 200 символов параграфа
+    return title
 
-def search_article():
-    """Основная функция игры."""
+def list_paragraphs(driver):
+    paragraphs = driver.find_elements(By.CSS_SELECTOR, "p")
+    for i, para in enumerate(paragraphs):
+        print(f"{i + 1}: {para.text}\n")
+
+def get_related_links(driver):
+    links = driver.find_elements(By.CSS_SELECTOR, "#bodyContent a[href^='/wiki/']")
+    return [link for link in links if link.text]
+
+def main():
+    driver = setup_driver()
     while True:
-        query = input("\nВведите запрос для поиска в Википедии: ")
-        page = get_article(query)
+        query = input("Введите запрос для поиска на Википедии (или 'exit' для выхода): ")
+        if query.lower() == 'exit':
+            break
 
-        if page:
-            print(f"\nНайдено! Заголовок статьи: {page.title}")
-            while True:
-                print("\nЧто хотите сделать?")
-                print("1. Листать параграфы статьи.")
-                print("2. Перейти на одну из связанных страниц.")
-                print("3. Выйти из программы.")
+        search_wikipedia(driver, query)
 
-                choice = input("Ваш выбор (1/2/3): ")
+        while True:
+            print("\nВыберите действие:")
+            print("1: Листать параграфы статьи")
+            print("2: Перейти на одну из связанных страниц")
+            print("3: Выйти из программы")
 
-                if choice == '1':
-                    list_paragraphs(page)
-
+            choice = input("Ваш выбор: ")
+            if choice == '1':
+                list_paragraphs(driver)
                 elif choice == '2':
-                    print("\nСписок связанных статей:")
-                    links = page.links
-                    for i, link in enumerate(links):
-                        print(f"{i+1}. {link.title}")
+                related_links = get_related_links(driver)
+                if not related_links:
+                    print("Нет связанных страниц.")
+                    continue
+                print("\nСвязанные страницы:")
+                for i, link in enumerate(related_links):
+                    print(f"{i + 1}: {link.text}")
 
-                    choice_link = input("\nВыберите номер статьи для перехода или введите 'q' для выхода: ")
-                    if choice_link.lower() == 'q':
-                        break
-                    else:
-                        try:
-                            link_number = int(choice_link) - 1
-                            new_page = links[link_number]
-                            page = get_article(new_page.title)
-                            if page:
-                                print(f"\nПерехожу к статье: {page.title}")
-                        except (ValueError, IndexError):
-                            print("Неверный ввод, попробуйте снова.")
-
-                elif choice == '3':
-                    print("Выход из программы. Спасибо за игру!")
-                    return
+                related_choice = int(input("Выберите номер страницы для перехода: ")) - 1
+                if 0 <= related_choice < len(related_links):
+                    related_link = related_links[related_choice].get_attribute('href').split('/')[-1]
+                    search_wikipedia(driver, related_link)
                 else:
-                    print("Некорректный выбор, попробуйте снова.")
+                    print("Некорректный выбор.")
+            elif choice == '3':
+                driver.quit()
+                return
+            else:
+                print("Некорректный выбор.")
 
-# Запуск программы
-search_article()
+            if __name__ == "__main__":
+                main()
